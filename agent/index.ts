@@ -1,18 +1,36 @@
-import { type } from "os";
 import { log } from "./logger";
+import { 
+    do_intercept,
+    do_get_exports
+} from "../libs/frida_process";
+import { 
+    net_hooks_backtrace,
+    enumerate_all_exports
+} from "../libs/frida-net";
  
-/*  Example of how to parse command line parameters
-    Using eval is dangerous so do not use this in production code unless you know what you're doing.
-    e.g. 
-    frida -f ~/my_binary -l _agent.js -P '{"call":["do_get_exports","\"libSystem.B.dylib\""]}' --no-pause --runtime=v8
-
- */ 
 rpc.exports = {
+    /*  Example of how to parse command line parameters
+     *
+     * Using eval is dangerous so do not use this in production code unless you know what you're doing.
+     * e.g. 
+     * frida -f ~/my_binary -l _agent.js -P '{"call":["do_get_exports","\"libSystem.B.dylib\""]}' --no-pause --runtime=v8
+     */ 
     init: function (stage, cmdline_json) {
-        console.log('[init]', stage, JSON.stringify(cmdline_json));
+        /* Init is automatically run with frida.
+         */
+        console.log(`[init], ${stage}, ${JSON.stringify(cmdline_json)}`);
         rpc.exports.cmdline_json = cmdline_json;
 
         Object.keys(rpc.exports.cmdline_json).forEach(key => {
+            /* Expect following json:
+                    "call": ["function name":"parameter"]
+                    "appname": string 
+             */
+                if (key === 'appname') {
+                    rpc.exports.appname = (rpc.exports.cmdline_json as any)[key]
+                    console.log(`App name is  ${rpc.exports.appname}`)
+                }
+
                 if (key === 'call') {
                     // Function call type parameter
                     let call_func = (rpc.exports.cmdline_json as any)[key]
@@ -26,31 +44,12 @@ rpc.exports = {
 
                         let func_name = temp_array.shift()
                         let func_params = temp_array
-
-                        if (is_allowed(func_name)) {
-                            call_func = `${func_name}(${func_params})`
-                        } else {
-                            // Cause invocation to fail. Better to raise exception?
-                            console.log(`Can't run: Function doesn't exist or not approved`)
-                            throw 'Function not authorized!';
-                        }
-
+                        rpc.exports.call_func_name = func_name
+                        rpc.exports.call_func_params = func_params as any
+                        rpc.exports.call_func = `${func_name}(${func_params})` as any
                     } else if (typeof call_func === 'string') {
-                        if (is_allowed(call_func)) {
-                            call_func = `${call_func}()`
-                        } else {
-                            // Cause invocation to fail. Better to raise exception?
-                            console.log(`Can't run: Function doesn't exist or not approved`)
-                            throw 'Function not authorized!';
-                        }
-                    }
-
-                    if (typeof call_func !== 'undefined' && call_func !== '') { 
-                        console.log(`Running ${call_func}`)
-                        // Function name should have been validated for safety.
-                        eval(call_func)
-                    } else {
-                        console.log(`Can't run: Function doesn't exist or not approved`)
+                        rpc.exports.call_func_name = call_func as any
+                        rpc.exports.call_func = `${call_func}()` as any
                     }
                 }
             });
@@ -60,31 +59,27 @@ rpc.exports = {
     }
 };
 
-function is_allowed(func_name:string) {
-    /*  Validate authorized function names that can be specified
-        from agent process invocation
-     */
-    switch (func_name) {
-        case "do_get_exports": return true;
-    }
-}
 
-function do_get_exports(module_name: string){
-    // e.g. Param: "libSystem.B.dylib"
-    Process.getModuleByName(module_name)
-        .enumerateExports()
-        .slice(0, 16)
-        .forEach((exp, index) => {
-            log(`export ${index}: ${exp.name}`);
-        });
-}
-
-function do_intercept(export_name: string){
-    // e.g. Param: "open"
-    Interceptor.attach(Module.getExportByName(null, export_name), {
-        onEnter(args) {
-            const path = args[0].readUtf8String();
-            log(`open() path="${path}"`);
-        }
-    });       
-}
+/* Main
+ * Avoid java.lang.ClassNotFoundException by using setTimeout().
+ */
+(function main() {
+    setTimeout(async () => {
+            if (typeof rpc.exports.call_func !== 'undefined' && `${rpc.exports.call_func}` !== '') { 
+                console.log(`Running ${rpc.exports.call_func_name}: ${JSON.stringify(rpc.exports.call_func_params)} ${typeof rpc.exports.call_func_params}`)
+                // Validate user function call for safety.
+                switch (`${rpc.exports.call_func_name}`) {
+                    case "do_get_exports":  do_get_exports(`${rpc.exports.call_func_params}`); return;
+                    case "do_intercept":    do_intercept(`${rpc.exports.call_func_params}`); return;
+                    case "net_hooks_backtrace":    
+                        const funcs_params = rpc.exports.call_func_params as any
+                        net_hooks_backtrace(funcs_params[0], funcs_params[1]); 
+                        return;
+                    case "enumerate_all_exports": enumerate_all_exports(); return;
+                    default: console.log(`Failed to run. No matching function.`); return;
+                }
+            } else {
+                console.log(`Can't run, Must specify function to call.`)
+            }
+        }, 1000);
+})();
