@@ -1,12 +1,16 @@
 import { log } from "./logger";
 import { 
     do_intercept,
-    do_get_exports
+    do_get_exports,
+    do_find_functions
 } from "../libs/frida_process";
 import { 
     net_hooks_backtrace,
     enumerate_all_exports
 } from "../libs/frida-net";
+const os = require('os');
+
+console.log(`Agent running on ${os.release()} ${os.type()} ${os.platform()}`)
  
 rpc.exports = {
     /*  Example of how to parse command line parameters
@@ -23,7 +27,7 @@ rpc.exports = {
 
         Object.keys(rpc.exports.cmdline_json).forEach(key => {
             /* Expect following json:
-                    "call": ["function name":"parameter"]
+                    "call": ["function name","parameter"]
                     "appname": string 
              */
                 if (key === 'appname') {
@@ -76,6 +80,9 @@ rpc.exports = {
                         net_hooks_backtrace(funcs_params[0], funcs_params[1]); 
                         return;
                     case "enumerate_all_exports": enumerate_all_exports(); return;
+                    case "do_find_functions":
+                        const func_params = rpc.exports.call_func_params as any
+                        do_find_functions(func_params[0]); return;
                     default: console.log(`Failed to run. No matching function.`); return;
                 }
             } else {
