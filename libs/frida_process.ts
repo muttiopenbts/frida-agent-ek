@@ -55,6 +55,17 @@ function get_timestamp() {
 }
 
 
+export function do_find_functions(func_glob: string) {
+    /*
+     * e.g. func_glob = *Http*setCookiesForDomain*
+     */
+    console.log(`do_find_functions called.`)
+    DebugSymbol.findFunctionsMatching(func_glob)
+        .forEach(function (sym_addr: NativePointer) {
+            console.log(`${DebugSymbol.fromAddress(ptr(sym_addr as any)).name}`)
+        });
+}
+
 export function do_get_exports(module_name: string){
     // e.g. Param: "libSystem.B.dylib"
     Process.getModuleByName(module_name)
