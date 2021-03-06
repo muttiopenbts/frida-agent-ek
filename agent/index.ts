@@ -1,3 +1,14 @@
+/* Example invokation:
+ * $ frida -f ~/network_client -l _agent.js --no-pause --runtime=v8 -P '{"call":["enumerate_all_exports"], "appname":"~/network_client"}'
+ * or
+ * $ frida -f /Applications/Telegram.app/Contents/MacOS/Telegram -l _agent.js --no-pause --runtime=v8 -P '{
+ *   "call":[
+ *        "net_hooks_backtrace",["send","recv","connect"],[{"protocol": "tcp", "port":443, "buffer":false, "backtrace":false, "bt_sample_size": 1}]
+ *       ], 
+ *   "appname":"/Applications/Telegram.app/Contents/MacOS/Telegram"
+ *}'
+ *
+ */
 import { log } from "./logger";
 import { 
     do_intercept,
